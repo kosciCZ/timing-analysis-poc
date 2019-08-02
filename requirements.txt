@@ -1,0 +1,4 @@
+scapy>=2.4.3rc4
+matplotlib
+numpy
+scipy
