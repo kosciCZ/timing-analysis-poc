@@ -1,7 +1,6 @@
 import socket
 import argparse
 import time
-import random
 
 
 def run(ip, port):
@@ -34,13 +33,12 @@ def decide_response(incoming_data):
     if incoming_data == b"00":
         print("GOOD")
     # BAD
-    if incoming_data == b"01":
+    elif incoming_data == b"01":
         response = b"1"
         print("BAD")
     # BAAD
-    if incoming_data == b"11":
-        sleep = random.random()
-        time.sleep(sleep % 0.001)
+    elif incoming_data == b"11":
+        time.sleep(0.001)
         print("BAAD")
         response = b"1"
     return response
