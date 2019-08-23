@@ -1,9 +1,11 @@
 import socket
 import argparse
 import time
-from scapy.all import wrpcap, AsyncSniffer, rdpcap
-from scapy.layers.inet import IP, TCP, defragment
+import subprocess
+import os
 import csv
+from scapy.all import rdpcap
+from scapy.layers.inet import IP, TCP, defragment
 
 
 class Test:
@@ -25,33 +27,39 @@ class Test:
         self.baad_query = b"11"
 
     def run(self):
+        if os.geteuid() != 0:
+            print('Please run this test with root privileges, as it requires packet capturing to work.')
+            raise SystemExit
+
+        self.output = f'packets_{int(time.time())}'
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
         # start sniffing
         sniffer = self.sniff(f'host {self.server_ip} and port {self.server_port} and tcp')
         print(f'host {self.server_ip} and port {self.server_port} and tcp')
-        sniffer.start()
 
-        # sleep for a second, or Scapy won't catch all the packets
-        time.sleep(1)
+        # sleep for a second to give tcpdump time to start capturing
+        time.sleep(2)
 
         sock.connect((self.server_ip, self.server_port))
         self.ip, self.port = sock.getsockname()
         print(f'Assigned ip:port - {self.ip}:{self.port}')
         queries = [self.good_query, self.bad_query, self.baad_query]
         for query in queries:
+            print(f"Sending {self.repetitions}x query {query}")
             for i in range(0, self.repetitions):
                 sock.sendall(query)
                 data = sock.recv(1)
-                print(data)
         sock.close()
 
-        # stop sniffing and save the capture
-        sniffer.stop()
-        self.output = f'packets_{int(time.time())}'
-        wrpcap(f'{self.output}.pcap', sniffer.results)
+        # stop sniffing and give tcpdump time to write all buffered packets
+        time.sleep(2)
+        sniffer.terminate()
 
     def sniff(self, packet_filter=''):
-        return AsyncSniffer(iface=self.interface, filter=packet_filter)
+        flags = ['-i', 'lo', '-U', '-nn', '--time-stamp-precision', 'nano']
+        output_file = os.path.join(os.getcwd(), f'{self.output}.pcap')
+        return subprocess.Popen(['tcpdump', packet_filter, '-w', output_file] + flags)
 
     def get_times(self, capture):
         packets = rdpcap(capture)
@@ -60,7 +68,6 @@ class Test:
         query_time_capture = 0.0
         query_time_timestamp = 0
 
-        i = 0
         for packet in packets:
             ip_pkt = packet[IP]
             tcp_pkt = packet[TCP]
@@ -69,10 +76,6 @@ class Test:
             src_port = tcp_pkt.fields['sport']
             # only interested in packets with payload and those that are not duplicates on loopback
             if not tcp_pkt.payload:
-                continue
-
-            if self.interface == 'lo' and i % 2 == 1:
-                i += 1
                 continue
 
             # is it a client query?
@@ -86,7 +89,6 @@ class Test:
                 tsval, _ = get_timestamp(tcp_pkt)
                 if query_time_timestamp and tsval:
                     times['timestamp'].append(tsval - query_time_timestamp)
-            i += 1
         return times
 
 
@@ -114,11 +116,17 @@ if __name__ == '__main__':
     for kind in ['capture', 'timestamp']:
         times[kind] = [str(x) for x in times[kind]]
         good_data = times[kind][0:test.repetitions]
-        bad_data = times[kind][test.repetitions:2*test.repetitions]
-        baad_data = times[kind][2*test.repetitions:3*test.repetitions]
+        bad_data = times[kind][test.repetitions:2 * test.repetitions]
+        baad_data = times[kind][2 * test.repetitions:3 * test.repetitions]
         with open(f'{test.output}_{kind}.csv', 'w') as csvfile:
+            print(f"Writing to {test.output}_{kind}.csv")
             writer = csv.writer(csvfile,
                                 quotechar='|', quoting=csv.QUOTE_MINIMAL)
             writer.writerow(good_data)
             writer.writerow(bad_data)
             writer.writerow(baad_data)
+
+    # call R script for analysis
+    result = subprocess.run(['Rscript', 'analysis.r', test.output], stdout=subprocess.PIPE, universal_newlines=True)
+    if result.stdout:
+        print(result.stdout)
