@@ -10,20 +10,18 @@ def run(ip, port):
 
     while True:
         conn, addr = sock.accept()
-        try:
+        with conn:
             data = b""
-            while True:
-                data += conn.recv(2)
-                if len(data) == 2:
-                    response = decide_response(data)
-                elif len(data) == 1:
-                    data += conn.recv(1)
-                    response = decide_response(data)
-                else:
-                    break
-                conn.sendall(response)
-                data = b""
-        finally:
+            data += conn.recv(2)
+            if len(data) == 2:
+                response = decide_response(data)
+            elif len(data) == 1:
+                data += conn.recv(1)
+                response = decide_response(data)
+            else:
+                break
+            conn.sendall(response)
+            data = b""
             conn.close()
 
 

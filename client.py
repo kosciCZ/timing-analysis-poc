@@ -10,11 +10,14 @@ from scapy.layers.inet import IP, TCP, defragment
 
 class Test:
 
-    def __init__(self, sever_ip, server_port, repetitions, interface, ip=None, port=None):
+    def __init__(self, sever_ip, server_port, repetitions, interface, warmup, sanity_check, ip=None, port=None):
         self.server_ip = sever_ip
         self.server_port = server_port
         self.repetitions = repetitions
         self.interface = interface
+
+        self.warmup = warmup
+        self.sanity_check = sanity_check
 
         self.ip = ip
         self.port = port
@@ -32,7 +35,6 @@ class Test:
             raise SystemExit
 
         self.output = f'packets_{int(time.time())}'
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         # start sniffing
         sniffer = self.sniff(f'host {self.server_ip} and port {self.server_port} and tcp')
@@ -41,20 +43,37 @@ class Test:
         # sleep for a second to give tcpdump time to start capturing
         time.sleep(2)
 
-        sock.connect((self.server_ip, self.server_port))
-        self.ip, self.port = sock.getsockname()
-        print(f'Assigned ip:port - {self.ip}:{self.port}')
+        # warm up by sending 500 packets
+        self.conversation(self.good_query, 500)
+
+        # perform the actual test
         queries = [self.good_query, self.bad_query, self.baad_query]
+        if self.sanity_check:
+            queries = [self.good_query, self.good_query, self.good_query]
         for query in queries:
             print(f"Sending {self.repetitions}x query {query}")
-            for i in range(0, self.repetitions):
-                sock.sendall(query)
-                data = sock.recv(1)
-        sock.close()
+            self.conversation(query, self.repetitions)
 
         # stop sniffing and give tcpdump time to write all buffered packets
         time.sleep(2)
         sniffer.terminate()
+        sniffer.wait()
+
+        # output a short log with info about this run
+        with open(f"{self.output}_log.txt", 'w') as log:
+            log.write(f"server: {self.server_ip}:{self.server_port}\n")
+            log.write(f"repetitions: {self.repetitions}\n")
+            log.write(f"warmup: {self.warmup}\n")
+            log.write("queries:\n")
+            log.writelines([f"{x.decode()}\n" for x in queries])
+
+    def conversation(self, query, repetitions=1):
+        for i in range(0, repetitions):
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect((self.server_ip, self.server_port))
+            self.ip, self.port = sock.getsockname()
+            sock.sendall(query)
+            data = sock.recv(1)
 
     def sniff(self, packet_filter=''):
         flags = ['-i', 'lo', '-U', '-nn', '--time-stamp-precision', 'nano']
@@ -74,7 +93,15 @@ class Test:
 
             src_ip = ip_pkt.fields['src']
             src_port = tcp_pkt.fields['sport']
-            # only interested in packets with payload and those that are not duplicates on loopback
+
+            # save source ip and port if you detect a new connection opening to the server
+            if is_syn(tcp_pkt) \
+                    and tcp_pkt.fields['dport'] == self.server_port \
+                    and ip_pkt.fields['dst'] == self.server_ip:
+                self.ip = src_ip
+                self.port = src_port
+
+            # only interested in packets with payload
             if not tcp_pkt.payload:
                 continue
 
@@ -102,22 +129,30 @@ def get_timestamp(tcp_packet):
     return None, None
 
 
+def is_syn(tcp_packet):
+    return tcp_packet.flags & 0x02
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Timing analysis test client")
     parser.add_argument('--server-ip', help="Server IP address", dest='ip', default='127.0.0.1')
     parser.add_argument('--server-port', help="Server port", dest='port', type=int, default=20300)
     parser.add_argument('--repeat', help="How many times each query should be repeated", type=int, default=100)
+    parser.add_argument('--warmup', help="How many conversations to have to get system to reproducible state", type=int,
+                        default=500)
     parser.add_argument('--interface', help="Network interface to sniff on", default='lo')
+    parser.add_argument('--sanity-check', help='Sends only GOOD queries', dest='sanity_check',
+                        action='store_true', default=False)
     args = parser.parse_args()
-    test = Test(args.ip, args.port, args.repeat, args.interface)
+    test = Test(args.ip, args.port, args.repeat, args.interface, args.warmup, args.sanity_check)
     test.run()
     times = test.get_times(f'{test.output}.pcap')
 
     for kind in ['capture', 'timestamp']:
         times[kind] = [str(x) for x in times[kind]]
-        good_data = times[kind][0:test.repetitions]
-        bad_data = times[kind][test.repetitions:2 * test.repetitions]
-        baad_data = times[kind][2 * test.repetitions:3 * test.repetitions]
+        good_data = times[kind][test.warmup:test.repetitions + test.warmup]
+        bad_data = times[kind][test.repetitions + test.warmup:2 * test.repetitions + test.warmup]
+        baad_data = times[kind][2 * test.repetitions + test.warmup:3 * test.repetitions + test.warmup]
         with open(f'{test.output}_{kind}.csv', 'w') as csvfile:
             print(f"Writing to {test.output}_{kind}.csv")
             writer = csv.writer(csvfile,
