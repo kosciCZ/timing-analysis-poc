@@ -51,7 +51,6 @@ class Test:
         if self.sanity_check:
             queries = [self.good_query, self.good_query, self.good_query]
         for query in queries:
-            print(f"Sending {self.repetitions}x query {query}")
             self.conversation(query, self.repetitions)
 
         # stop sniffing and give tcpdump time to write all buffered packets
