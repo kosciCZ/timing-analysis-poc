@@ -10,13 +10,15 @@ from scapy.layers.inet import IP, TCP, defragment
 
 class Test:
 
-    def __init__(self, sever_ip, server_port, repetitions, interface, warmup, sanity_check, ip=None, port=None):
+    def __init__(self, sever_ip, server_port, repetitions, interface, warmup, sanity_check, cooldown, ip=None,
+                 port=None):
         self.server_ip = sever_ip
         self.server_port = server_port
         self.repetitions = repetitions
         self.interface = interface
 
         self.warmup = warmup
+        self.cooldown = cooldown
         self.sanity_check = sanity_check
 
         self.ip = ip
@@ -44,7 +46,7 @@ class Test:
         time.sleep(2)
 
         # warm up by sending 500 packets
-        self.conversation(self.good_query, 500)
+        self.conversation(self.good_query, self.warmup)
 
         # perform the actual test
         queries = [self.good_query, self.bad_query, self.baad_query]
@@ -68,6 +70,7 @@ class Test:
 
     def conversation(self, query, repetitions=1):
         for i in range(0, repetitions):
+            time.sleep(self.cooldown)
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.connect((self.server_ip, self.server_port))
             self.ip, self.port = sock.getsockname()
@@ -77,7 +80,7 @@ class Test:
     def sniff(self, packet_filter=''):
         flags = ['-i', 'lo', '-U', '-nn', '--time-stamp-precision', 'nano']
         output_file = os.path.join(os.getcwd(), f'{self.output}.pcap')
-        return subprocess.Popen(['tcpdump', packet_filter, '-w', output_file] + flags)
+        return subprocess.Popen(['taskset', '1', 'tcpdump', packet_filter, '-w', output_file] + flags)
 
     def get_times(self, capture):
         packets = rdpcap(capture)
@@ -137,13 +140,14 @@ if __name__ == '__main__':
     parser.add_argument('--server-ip', help="Server IP address", dest='ip', default='127.0.0.1')
     parser.add_argument('--server-port', help="Server port", dest='port', type=int, default=20300)
     parser.add_argument('--repeat', help="How many times each query should be repeated", type=int, default=100)
+    parser.add_argument('--interface', help="Network interface to sniff on", default='lo')
     parser.add_argument('--warmup', help="How many conversations to have to get system to reproducible state", type=int,
                         default=500)
-    parser.add_argument('--interface', help="Network interface to sniff on", default='lo')
+    parser.add_argument('--cooldown', help="How long to wait before each conversation", type=float, default=0.002)
     parser.add_argument('--sanity-check', help='Sends only GOOD queries', dest='sanity_check',
                         action='store_true', default=False)
     args = parser.parse_args()
-    test = Test(args.ip, args.port, args.repeat, args.interface, args.warmup, args.sanity_check)
+    test = Test(args.ip, args.port, args.repeat, args.interface, args.warmup, args.sanity_check, args.cooldown)
     test.run()
     times = test.get_times(f'{test.output}.pcap')
 
