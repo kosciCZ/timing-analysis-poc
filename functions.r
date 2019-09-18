@@ -138,6 +138,66 @@ plot.levelplot <- function(data, save=FALSE){
   }
 }
 
+show.quantile <- function(data, q, sanity=FALSE){
+  X11(bg="white")
+  par(mfrow=c(1,3))
+
+  if(sanity){
+    names <- c('GOOD', 'GOOD', 'GOOD')
+  } else{
+    names <- c('GOOD', 'BAD', 'BAAD')
+  }
+
+  for (i in c(1:length(data[,1]))){
+    plot(sort(data[i,]), main=names[i], ylim=c(min(data[i,]),quantile(data[i,],q)))
+
+  }
+}
+
+box.test <- function(sample1, sample2, i, j){
+  s1i = quantile(sample1, i)
+  s1j = quantile(sample1, j)
+
+  s2i = quantile(sample2, i)
+  s2j = quantile(sample2, j)
+
+  arr <- array(c(c(s1i,s2i),c(s1j,s2j)), dim=c(2,2))
+
+  # select 'bigger' interval
+  # assume s2 bigger
+  smaller = 1
+  bigger = 2
+  if (s2i <= s1i){
+    # s1 is bigger
+    smaller = 2
+    bigger = 1
+  }
+
+  cat("Sample 1: ",s1i,"-",s1j, "\n")
+  cat("Sample 2: ",s2i,"-",s2j, "\n")
+
+
+  if (arr[smaller,1] < arr[bigger,1] && arr[smaller,2] < arr[bigger,1]){
+    return(bigger)
+    cat("Sample ", bigger, " is bigger.")
+  } else{
+    cat("Samples are not statistically different")
+    return(FALSE)
+  }
+}
+
+scatter.plot <- function(data, sanity=FALSE){
+  if(sanity){
+    names <- c('GOOD', 'GOOD', 'GOOD')
+  } else{
+    names <- c('GOOD', 'BAD', 'BAAD')
+  }
+  for (i in c(1:length(data[,1]))){
+    X11()
+    plot(data[i,], main=paste(names[i]," (batch ",i,")",sep=''), ylim=c(quantile(data[i,],0.1),quantile(data[i,],0.98)))
+  }
+}
+
 save.everything <- function(data, sanity=FALSE){
   plot.qq.normal(data, sanity=sanity, save=TRUE)
   plot.cdf(data, sanity=sanity, save=TRUE)
