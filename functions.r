@@ -179,10 +179,43 @@ box.test <- function(sample1, sample2, i, j){
 
   if (arr[smaller,1] < arr[bigger,1] && arr[smaller,2] < arr[bigger,1]){
     return(bigger)
-    cat("Sample ", bigger, " is bigger.")
+    cat("Sample ", bigger, " is bigger.\n")
   } else{
-    cat("Samples are not statistically different")
+    cat("Samples are not statistically different.\n")
     return(FALSE)
+  }
+}
+
+box.test.all <- function(data, i=0.0, j=0.05){
+  # cross test all samples
+  cat("1 vs 2 - ", box.test(data[1,], data[2,], i, j), "\n")
+  cat("1 vs 3 - ", box.test(data[1,], data[3,], i, j), "\n")
+  cat("2 vs 3 - ", box.test(data[2,], data[3,], i, j), "\n")
+}
+
+ks.test.all <- function(data){
+  # cross test all samples
+  cat("1 vs 2 - ", suppressWarnings(ks.test(data[1,], data[2,])$p.value), "\n")
+  cat("1 vs 3 - ", suppressWarnings(ks.test(data[1,], data[3,])$p.value), "\n")
+  cat("2 vs 3 - ", suppressWarnings(ks.test(data[2,], data[3,])$p.value), "\n")
+}
+
+
+self.test <- function(data, i=0.0, j=0.05){
+  # self test by splitting in half
+  l =  length(data)
+  mid = length(data) %/% 2
+  cat("K-S test: ",suppressWarnings(ks.test(data[0:mid], data[mid:l])$p.value), "\n")
+  cat("Wilcox test: ",wilcox.test(data[0:mid], data[mid:l])$p.value, "\n")
+  cat("Box test:\n")
+  box.test(data[0:mid], data[mid:l], i, j)
+}
+
+self.test.all <- function(data,i=0.0, j=0.05){
+  for (x in c(1:length(data[,1]))){
+    cat("Sample ",x,":\n")
+    self.test(data[x,], i, j)
+    cat("\n")
   }
 }
 
