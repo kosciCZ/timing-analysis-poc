@@ -4,6 +4,7 @@ import time
 import subprocess
 import os
 import csv
+import gc
 from scapy.all import rdpcap
 from scapy.layers.inet import IP, TCP, defragment
 
@@ -39,6 +40,9 @@ class Test:
 
         self.output = f'packets_{int(time.time())}'
 
+        # disable garbage collection
+        gc.disable()
+
         # start sniffing
         sniffer = self.sniff(f'host {self.server_ip} and port {self.server_port} and tcp')
         print(f'host {self.server_ip} and port {self.server_port} and tcp')
@@ -60,12 +64,16 @@ class Test:
         time.sleep(2)
         sniffer.terminate()
         sniffer.wait()
+        # enable garbage collection
+        gc.enable()
 
         # output a short log with info about this run
         with open(f"{self.output}_log.txt", 'w') as log:
             log.write(f"server: {self.server_ip}:{self.server_port}\n")
             log.write(f"repetitions: {self.repetitions}\n")
             log.write(f"warmup: {self.warmup}\n")
+            log.write(f"cooldown: {self.cooldown}\n")
+            log.write(f"cpu isolation: {self.cpu}\n")
             log.write("queries:\n")
             log.writelines([f"{x.decode()}\n" for x in queries])
 
@@ -73,13 +81,14 @@ class Test:
         for i in range(0, repetitions):
             time.sleep(self.cooldown)
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             sock.connect((self.server_ip, self.server_port))
             self.ip, self.port = sock.getsockname()
             sock.sendall(query)
             data = sock.recv(1)
 
     def sniff(self, packet_filter=''):
-        flags = ['-i', 'lo', '-U', '-nn', '--time-stamp-precision', 'nano']
+        flags = ['-i', self.interface, '-U', '-nn', '--time-stamp-precision', 'nano']
         output_file = os.path.join(os.getcwd(), f'{self.output}.pcap')
         cpu_affinity = ['taskset', '--cpu-list', str(self.cpu)] if self.cpu else []
         return subprocess.Popen(cpu_affinity + ['tcpdump', packet_filter, '-w', output_file] + flags)
