@@ -158,26 +158,29 @@ if __name__ == '__main__':
     parser.add_argument('--cpu', help="Id of isolated cpu for packet capture", type=int)
     parser.add_argument('--sanity-check', help='Sends only GOOD queries', dest='sanity_check',
                         action='store_true', default=False)
+    parser.add_argument('--capture-only', help='Only produces log and pcap file', dest='capture_only',
+                        action='store_true', default=False)
     args = parser.parse_args()
     test = Test(args.ip, args.port, args.repeat, args.interface, args.warmup, args.sanity_check, args.cooldown,
                 args.cpu)
     test.run()
-    times = test.get_times(f'{test.output}.pcap')
+    if not args.capture_only:
+        times = test.get_times(f'{test.output}.pcap')
 
-    for kind in ['capture', 'timestamp']:
-        times[kind] = [str(x) for x in times[kind]]
-        good_data = times[kind][test.warmup:test.repetitions + test.warmup]
-        bad_data = times[kind][test.repetitions + test.warmup:2 * test.repetitions + test.warmup]
-        baad_data = times[kind][2 * test.repetitions + test.warmup:3 * test.repetitions + test.warmup]
-        with open(f'{test.output}_{kind}.csv', 'w') as csvfile:
-            print(f"Writing to {test.output}_{kind}.csv")
-            writer = csv.writer(csvfile,
-                                quotechar='|', quoting=csv.QUOTE_MINIMAL)
-            writer.writerow(good_data)
-            writer.writerow(bad_data)
-            writer.writerow(baad_data)
+        for kind in ['capture', 'timestamp']:
+            times[kind] = [str(x) for x in times[kind]]
+            good_data = times[kind][test.warmup:test.repetitions + test.warmup]
+            bad_data = times[kind][test.repetitions + test.warmup:2 * test.repetitions + test.warmup]
+            baad_data = times[kind][2 * test.repetitions + test.warmup:3 * test.repetitions + test.warmup]
+            with open(f'{test.output}_{kind}.csv', 'w') as csvfile:
+                print(f"Writing to {test.output}_{kind}.csv")
+                writer = csv.writer(csvfile,
+                                    quotechar='|', quoting=csv.QUOTE_MINIMAL)
+                writer.writerow(good_data)
+                writer.writerow(bad_data)
+                writer.writerow(baad_data)
 
-    # call R script for analysis
-    result = subprocess.run(['Rscript', 'analysis.r', test.output], stdout=subprocess.PIPE, universal_newlines=True)
-    if result.stdout:
-        print(result.stdout)
+        # call R script for analysis
+        result = subprocess.run(['Rscript', 'analysis.r', test.output], stdout=subprocess.PIPE, universal_newlines=True)
+        if result.stdout:
+            print(result.stdout)
