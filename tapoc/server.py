@@ -1,5 +1,4 @@
 import socket
-import argparse
 import time
 
 
@@ -16,7 +15,7 @@ class Server:
         sock.listen()
 
         while True:
-            conn, addr = sock.accept()
+            conn, _ = sock.accept()
             with conn:
                 data = b""
                 data += conn.recv(2)
@@ -44,13 +43,3 @@ class Server:
             time.sleep(self.sleep)
             response = b"1"
         return response
-
-
-parser = argparse.ArgumentParser(description="Timing analysis test server")
-parser.add_argument('--ip', help="IP address server runs on", default="127.0.0.1")
-parser.add_argument('--port', help="Port server runs on", type=int, required=True)
-parser.add_argument('--sleep', help="Amount of time to sleep for BAAD queries in seconds", type=float, default=0.001)
-
-args = parser.parse_args()
-server = Server(args.ip, args.port, args.sleep)
-server.run()

@@ -1,4 +1,1 @@
-scapy>=2.4.3
-matplotlib
-numpy
-scipy
+dpkt
