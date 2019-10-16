@@ -1,9 +1,8 @@
 # just set the  filename variable to 'packets_timestamp' prefix of the test files, to get them to load
+library('data.table')
 
-capture = read.csv(file=paste(filename, "capture.csv", sep='_'), header=FALSE)
-timestamp = read.csv(file=paste(filename, "timestamp.csv", sep='_'), header=FALSE)
+capture = fread(file=paste(filename, ".csv", sep=''), header=FALSE)
 capture.m = as.matrix(capture)
-timestamp.m = as.matrix(timestamp)
 
 
 stat.tests <- function(data){
@@ -119,6 +118,7 @@ runmedx <- function(data,x=1,k=3)
 }
 
 plot.levelplot <- function(data, save=FALSE){
+  require("lattice")
   X11()
   h <- hist(data, breaks=200,plot=FALSE)
   breaks = c(h$breaks)
@@ -219,20 +219,30 @@ self.test.all <- function(data,i=0.0, j=0.05){
   }
 }
 
-scatter.plot <- function(data, sanity=FALSE){
+scatter.plot <- function(data, sanity=FALSE, save=FALSE){
   if(sanity){
     names <- c('GOOD', 'GOOD', 'GOOD')
   } else{
     names <- c('GOOD', 'BAD', 'BAAD')
   }
   for (i in c(1:length(data[,1]))){
-    X11()
+    X11(bg="white")
     plot(data[i,], main=paste(names[i]," (batch ",i,")",sep=''), ylim=c(quantile(data[i,],0.1),quantile(data[i,],0.98)))
+    if(save){
+      dev.copy(png,filename=paste(filename, "_scatter_",names[i],"_",i,".png",sep=''), width=1920,height=1080)
+      dev.off()
+    }
   }
+}
+
+get.interval <- function(data, i, j){
+  data = sort(data)
+  return(split(data, cut(data, breaks = quantile(data,c(i,j)), include.lowest=TRUE, labels="interval"))$interval)
 }
 
 save.everything <- function(data, sanity=FALSE){
   plot.qq.normal(data, sanity=sanity, save=TRUE)
   plot.cdf(data, sanity=sanity, save=TRUE)
   plot.levelplot(data, save=TRUE)
+  scatter.plot(data, sanity=sanity, save=TRUE)
 }
