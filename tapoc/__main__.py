@@ -2,6 +2,7 @@ import argparse
 from .server import Server
 from .client import Client
 from .parse import Parse
+from .util import parse_log, queries
 
 DEFAULTS = {
     'server_ip': '127.0.0.1',
@@ -65,6 +66,13 @@ if __name__ == '__main__':
     parser_parse.add_argument('--warmup', help='How many warmup conversations', dest='warmup',
                               type=int,
                               default=DEFAULTS['warmup'])
+    parser_parse.add_argument('--sanity-check', help='Sends only GOOD queries',
+                              dest='sanity_check',
+                              action='store_true', default=False)
+    parser_parse.add_argument('--queries',
+                              help='Queries in their byte representation (eg. 0001 for 00 and 01)',
+                              type=queries, default=queries('000111'))
+    parser_parse.add_argument('--log', help='Log to read configuration from', dest='log')
 
     args = parser.parse_args()
 
@@ -77,13 +85,22 @@ if __name__ == '__main__':
                       args.cpu)
         test.run()
         if not args.capture_only:
-            parse = Parse(args.ip, args.port, args.repeat, f'{test.output}.pcap')
+            parse = Parse(args.ip, args.port, args.repeat, f'{test.output}.pcap', args.warmup,
+                          test.queries, args.sanity_check)
             parse.get_times()
-            parse.dump_csv(test.output, args.warmup)
+            parse.dump_csv(test.output)
     elif args.cmd == "parse":
-        t = Parse(args.ip, args.port, args.repeat, args.input)
+        t = None
+        if args.log:
+            # log file is specified, values can be loaded from it
+            log = parse_log(args.log)
+            t = Parse(log['server_ip'], log['server_port'], log['repetitions'], args.input,
+                      log['warmup'], log['queries'], log['sanity_check'])
+        else:
+            t = Parse(args.ip, args.port, args.repeat, args.input, args.warmup, args.queries,
+                      args.sanity_check)
         output = args.input
         if args.input[-5:] == ".pcap":
             output = args.input[:-5]
         t.get_times()
-        t.dump_csv(output, args.warmup)
+        t.dump_csv(output)

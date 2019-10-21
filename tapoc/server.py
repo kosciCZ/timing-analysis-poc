@@ -1,6 +1,6 @@
 import socket
 import time
-
+from .util import GOOD, BAD, BAAD
 
 class Server:
 
@@ -32,14 +32,11 @@ class Server:
 
     def decide_response(self, incoming_data):
         response = b"0"
-        # GOOD
-        if incoming_data == b"00":
+        if incoming_data == GOOD:
             pass
-        # BAD
-        elif incoming_data == b"01":
+        elif incoming_data == BAD:
             response = b"1"
-        # BAAD
-        elif incoming_data == b"11":
+        elif incoming_data == BAAD:
             time.sleep(self.sleep)
             response = b"1"
         return response

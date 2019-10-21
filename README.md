@@ -84,3 +84,5 @@ And for the parser:
 | `--server-port` | Port the server was running on. Defaults to `20300` | No|
 | `--repetitions` | How many times each query was repeated. Defaults to `10000`| No|
 | `--warmup` | How many queries were sent as a warmup. Defaults to `500` | No |
+| `--queries` | Queries in their byte representation (eg. 0001 for 00 and 01) | No |
+| `--log`   | Log file from Client to read configuration from. If specified, other options except `--input` are ignored | No|
