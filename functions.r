@@ -1,8 +1,11 @@
 # just set the  filename variable to 'packets_timestamp' prefix of the test files, to get them to load
 library('data.table')
+library('matrixStats')
 
-capture = fread(file=paste(filename, ".csv", sep=''), header=FALSE)
-capture.m = as.matrix(capture)
+get.data <- function(filename){
+  capture = fread(file=paste(filename, ".csv", sep=''), header=FALSE)
+  return(as.matrix(capture))
+}
 
 
 stat.tests <- function(data){
@@ -45,11 +48,10 @@ plot.mean.median.box <- function(capture.m, timestamp.m, sanity=FALSE, save=FALS
 
 plot.cdf <- function(data, sanity=FALSE, save=FALSE){
   X11(bg="white")
+  par(mfrow=c(2,2))
   if(sanity){
     names <- c('GOOD', 'GOOD', 'GOOD')
-    par(mfrow=c(2,2))
   } else{
-    par(mfrow=c(1,3))
     names <- c('GOOD', 'BAD', 'BAAD')
   }
 
@@ -65,8 +67,8 @@ plot.cdf <- function(data, sanity=FALSE, save=FALSE){
   {
     plot(ecdf(data[i,]), col=colors[i], main=paste(names[i],'CDF'), xlim=c(min(data[i,]),quantile(data[i,],0.99)))
   }
-  if (sanity)
-  {
+  #if (sanity)
+  #{
     # Create a single chart with all 3 CDF plots for sanity check.
     plot(ecdf(data[1,]), col=aCDFcolor, main=NA, xlim=c(min(data),quantile(data,0.99)))
     plot(ecdf(data[2,]), col=bCDFcolor, add=T)
@@ -74,14 +76,9 @@ plot.cdf <- function(data, sanity=FALSE, save=FALSE){
 
     # Add a legend to the chart.
     legend('right', names, fill=colors, border=NA)
-  }
+  #}
   if(save){
-    height = 400
-    if(sanity)
-    {
-      height = 1200
-    }
-    dev.copy(png,filename=paste(filename, "cdf.png",sep='_'),width=1200,height=height)
+    dev.copy(png,filename=paste(filename, "cdf.png",sep='_'),width=1200,height=1200)
     dev.off()
   }
 }
@@ -194,10 +191,16 @@ box.test.all <- function(data, i=0.0, j=0.05){
 }
 
 ks.test.all <- function(data){
-  # cross test all samples
-  cat("1 vs 2 - ", suppressWarnings(ks.test(data[1,], data[2,])$p.value), "\n")
-  cat("1 vs 3 - ", suppressWarnings(ks.test(data[1,], data[3,])$p.value), "\n")
-  cat("2 vs 3 - ", suppressWarnings(ks.test(data[2,], data[3,])$p.value), "\n")
+  # generate all combinations for the data
+  v = c(1:length(data[,1]))
+  combinations = t(combn(v, 2))
+  ret = c()
+  for (i in c(1:length(combinations[,1]))){
+    pval = suppressWarnings(ks.test(data[combinations[i,1],], data[combinations[i,2],])$p.value)
+    cat(combinations[i,1]," vs ",combinations[i,2]," - ", pval, "\n")
+    ret <- c(ret,pval)
+  }
+  return(ret)
 }
 
 
@@ -245,4 +248,119 @@ save.everything <- function(data, sanity=FALSE){
   plot.cdf(data, sanity=sanity, save=TRUE)
   plot.levelplot(data, save=TRUE)
   scatter.plot(data, sanity=sanity, save=TRUE)
+}
+
+compare.percentiles <- function(a,b, samples=1000, start=0, end=1, e=0){
+  cat("P - A vs B -> greater\n")
+  a= sort(a)
+  b=sort(b)
+  a_count = 0  
+  b_count = 0
+  a_diff = 0
+  b_diff = 0
+  e_count = 0
+  for(i in c(1:samples)){
+    p = start + (i*(end-start))/samples
+    qa = quantile(a,p)
+    qb = quantile(b,p)
+    gt = "A"
+    if(qa == qb){
+      gt = "A==B"
+    }
+    else if(abs(qa-qb) - e <= 0){
+      #account for accuraccy adjustment
+      e_count = e_count + 1
+      gt = "A==B"
+    }
+    else if(qa < qb){
+      gt="B"
+      b_count = b_count +1
+      b_diff = b_diff + abs(qa-qb)
+    }
+    else{
+      a_count = a_count + 1
+      a_diff = a_diff + abs(qa-qb)
+    }
+    
+    cat(p, " - ", qa, " vs. ", qb," -> ",gt,"\n")
+  }
+  a_pct = a_count/(a_count+b_count)
+  b_pct = b_count/(a_count+b_count)
+  cat("A: ", a_pct, " B:", b_pct," pct. tied",(samples-a_count-b_count)/samples,
+  "\nScore", abs(a_pct-b_pct)*((a_count+b_count)/samples), "\n",
+  samples, " quantile samples between quantiles ", start, " - ", end, "\n",
+  "e adjustments: ", (e_count)/samples, "\n",
+  "e adjusted score: ", abs(a_pct-b_pct)*((a_count+b_count+e_count)/samples), "\n")
+}
+
+
+percentile.filter <- function(data, down=0.1, up=0.9)
+{
+  ret = data[data > quantile(data, down)]
+  return(ret[ret < quantile(ret,up)])
+}
+
+print.statistics <- function(data, down=0.1, up=0.9){
+  cat("Unchanged data:\nMean\tMedian\n")
+  for (i in c(1:length(data[,1]))){
+      cat(mean(data[i,]),"\t", median(data[i,]),"\n")
+  }
+
+  cat("Filtered data (",down,"-",up,"):\nMean\tMedian\n")
+  for (i in c(1:length(data[,1]))){
+      cat(mean(percentile.filter(data[i,], down, up)),"\t", median(percentile.filter(data[i,], down, up)),"\n")
+  }
+
+}
+
+pcf <- function(data, down=0.1, up=0.9){
+  ret = data.table()
+  for (i in c(1:length(data[,1]))){
+    mod_data = percentile.filter(data[i,], down, up)
+    ret = cbind(ret, append(mod_data, rep(NA, (length(data[1,]) - length(mod_data))), after=length(mod_data)))
+  }
+  return(t(ret))
+}
+
+profiling.check.errors <- function(data, down=0.1, up=0.9){
+  v1 = ks.test.all(data)
+  v2 = ks.test.all(pcf(data,down, up))
+  combinations = combn(c(1:length(data[,1])), 2)
+  
+  cat("FN for unaltered data: ", length(v1[v1 < 0.05])/length(combinations[1,]), "\n")
+  cat("FN for filtered data (",down,"-",up,"): ", length(v2[v2 < 0.05])/length(combinations[1,]), "\n")
+}
+
+
+get.data.cross <- function(set1, set2, different=TRUE){
+  # generates FN/FP statistics for two sets.
+  stopifnot("Both sets must have the same number of rows" = length(set1[,1]) == length(set2[,1]))
+
+  combinations = expand.grid(rep(list(1:length(set1[,1])), 2))
+  ret = c()
+  for (i in c(1:length(combinations[,1]))){
+    pval = suppressWarnings(ks.test(set1[combinations[i,1],], set2[combinations[i,2],])$p.value)
+    cat(combinations[i,1]," vs ",combinations[i,2]," - ", pval, "\n")
+    ret <- c(ret,pval)
+  }
+  if(different){
+    # looking at wrongly pointed out "same distribution" - 
+    cat("FN:", length(ret [ret > 0.05])/length(combinations[,1]), "\n")
+  }
+  else{
+    # looking at wrongly pointed out "different distributions"
+    cat("FP:", length(ret [ret <= 0.05])/length(combinations[,1]), "\n")
+  }
+  return(ret)
+
+}
+
+merge.data <- function(set1, set2){
+  ret = t(set1)
+  set2 = t(set2)
+  for (i in c(1:length(set2[1,]))){
+    ret = cbind(ret, set2[,i])
+  }
+
+  return(ret)
 }
